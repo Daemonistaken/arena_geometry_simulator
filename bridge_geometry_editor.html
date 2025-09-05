@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Bridge Geometry Editor — Fixed</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
+  <style>
+    body {
+      display: flex;
+      font-family: sans-serif;
+      margin: 0;
+      background: #000;
+      color: #fff;
+      height: 100vh;
+      align-items: center;
+    }
+
+    #controls {
+      width: 320px;
+      padding: 20px;
+      background: #111;
+      color: #fff;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+      z-index: 2;
+    }
+
+    #canvas-container {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px;
+    }
+
+    canvas#c {
+      background: #000;
+      border: 1px solid #000;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+    }
+    #legend {
+      margin-top: 15px;
+      padding: 10px;
+      background: #222;
+      border-radius: 6px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    #legend p {
+      margin: 4px 0;
+    }
+
+    label { display: block; margin-top: 10px; }
+    input[type=number] { width: 100px; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <hr>
+    <div id="legend">
+      <h4>Legend</h4>
+      <p><span style="color:red; font-weight:bold;">■</span> Skana range</p>
+      <p><span style="color:cyan; font-weight:bold;">■</span> Khora</p>
+      <p><span style="color:yellow; font-weight:bold;">■</span> Dome</p>
+    </div>
+    <h3>Controls</h3>
+    <label>Obround Height (m) <input type="number" id="obroundHeight" value="7" step="0.1"></label>
+    <label>Obround Width (m) <input type="number" id="obroundWidth" value="6" step="0.1"></label>
+    <label>Dome Radius (m) <input type="number" id="domeRadius" value="2.6" step="0.1"></label>
+    <button id="update">Update Shapes</button>
+
+    <hr>
+    <label><input type="checkbox" id="toggleObround" checked> Show Obround</label>
+    <label><input type="checkbox" id="toggleMini" checked> Show Mini Circle</label>
+    <label><input type="checkbox" id="toggleObroundPlus" checked> Show Obround +</label>
+    <label><input type="checkbox" id="toggleDome" checked> Show Dome</label>
+    <label><input type="checkbox" id="toggleDomePlus" checked> Show Dome +</label>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="c" width="1000" height="600" style="border:1px solid #000"></canvas>
+  </div>
+
+<script>
+const scale = 50;
+const canvas = new fabric.Canvas('c', { selection: false });
+canvas.setBackgroundColor('black', canvas.renderAll.bind(canvas));
+
+fabric.Image.fromURL("bridge_image.jpg", function(img) {
+  if (!img) return;
+  img.scaleToWidth(canvas.width);
+  img.scaleToHeight(canvas.height);
+  canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+});
+
+let obroundGroup = null;
+let domeGroup = null;
+
+function makePlus(sizePx = 10, strokeWidth = 2) {
+  const half = sizePx / 2;
+  const line1 = new fabric.Line([-half, 0, half, 0], { stroke: 'lime', strokeWidth, originX: 'center', originY: 'center' });
+  const line2 = new fabric.Line([0, -half, 0, half], { stroke: 'lime', strokeWidth, originX: 'center', originY: 'center' });
+  return new fabric.Group([line1, line2], { originX: 'center', originY: 'center', selectable: false });
+}
+
+function makeObroundWithMini(widthM, heightM) {
+  const w = widthM * scale;
+  const h = heightM * scale;
+  const r = w / 2;
+  const straight = Math.max(0, h - 2 * r);
+
+  const pathData = [`M ${-w/2},${-straight/2}`, `a ${r},${r} 0 0 1 ${w},0`, `v ${straight}`, `a ${r},${r} 0 0 1 -${w},0`, `z`].join(' ');
+  const obround = new fabric.Path(pathData, { stroke: 'red', fill: 'transparent', strokeWidth: 2, originX: 'center', originY: 'center', selectable: false, strokeLineJoin: 'round', strokeLineCap: 'round', strokeUniform: true });
+
+  const gap = 1 * scale;
+  const miniRadius = 0.5 * scale;
+  const mini = new fabric.Circle({ radius: miniRadius, stroke: 'cyan', fill: 'transparent', strokeWidth: 2, originX: 'center', originY: 'center', selectable: false, left: 0, top: (h / 2) - gap - miniRadius });
+
+  const plus = makePlus(12, 2);
+  const group = new fabric.Group([obround, mini, plus], { left: 500, top: 300, originX: 'center', originY: 'center' });
+  group.obround = obround;
+  group.mini = mini;
+  group.plus = plus;
+
+  group.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false, bl: false, br: false, tl: false, tr: false, mtr: true });
+  group.lockScalingX = true;
+  group.lockScalingY = true;
+  group.lockScalingFlip = true;
+  group.subTargetCheck = false;
+
+  return group;
+}
+
+function makeDome(radiusM) {
+  const r_px = radiusM * scale;
+  const circle = new fabric.Circle({ radius: r_px, stroke: 'yellow', fill: 'transparent', strokeWidth: 2, originX: 'center', originY: 'center', selectable: false });
+  const plus = makePlus(12, 2);
+  const group = new fabric.Group([circle, plus], { left: 650, top: 300, originX: 'center', originY: 'center' });
+  group.circle = circle;
+  group.plus = plus;
+  group.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false, bl: false, br: false, tl: false, tr: false, mtr: true });
+  group.lockScalingX = true;
+  group.lockScalingY = true;
+  group.lockScalingFlip = true;
+  group.subTargetCheck = false;
+  return group;
+}
+
+function initShapes() {
+  if (obroundGroup) canvas.remove(obroundGroup);
+  if (domeGroup) canvas.remove(domeGroup);
+  obroundGroup = makeObroundWithMini(6, 7);
+  domeGroup = makeDome(2.6);
+  canvas.add(obroundGroup, domeGroup);
+  canvas.renderAll();
+}
+
+document.getElementById('update').onclick = () => {
+  const wMeters = parseFloat(document.getElementById('obroundWidth').value) || 0;
+  const hMeters = parseFloat(document.getElementById('obroundHeight').value) || 0;
+  const rMeters = parseFloat(document.getElementById('domeRadius').value) || 0;
+
+  // preserve coordinates
+  const obPos = { left: obroundGroup.left, top: obroundGroup.top, angle: obroundGroup.angle };
+  const domePos = { left: domeGroup.left, top: domeGroup.top, angle: domeGroup.angle };
+
+  // rebuild obround group in-place
+  const newObroundGroup = makeObroundWithMini(wMeters, hMeters);
+  newObroundGroup.left = obPos.left;
+  newObroundGroup.top = obPos.top;
+  newObroundGroup.angle = obPos.angle;
+  canvas.remove(obroundGroup);
+  obroundGroup = newObroundGroup;
+  canvas.add(obroundGroup);
+
+  // rebuild dome group in-place
+  const newDomeGroup = makeDome(rMeters);
+  newDomeGroup.left = domePos.left;
+  newDomeGroup.top = domePos.top;
+  newDomeGroup.angle = domePos.angle;
+  canvas.remove(domeGroup);
+  domeGroup = newDomeGroup;
+  canvas.add(domeGroup);
+
+  canvas.requestRenderAll();
+};
+
+  // Toggle handlers (guarded) — use opacity so the group bbox doesn't change
+  // Using opacity avoids changing group bounding boxes; no need to recalc bounds.
+  document.getElementById('toggleObround').onchange = (e) => {
+    if (!obroundGroup || !obroundGroup.obround) return;
+    const willShow = e.target.checked;
+    obroundGroup.obround.opacity = willShow ? 1 : 0;
+    // keep the object present in the group (opacity controls visibility)
+    obroundGroup.obround.selectable = willShow;
+    obroundGroup.dirty = true;
+    obroundGroup.setCoords();
+    canvas.requestRenderAll();
+  };
+
+  document.getElementById('toggleMini').onchange = (e) => {
+    if (!obroundGroup || !obroundGroup.mini) return;
+    const willShow = e.target.checked;
+    obroundGroup.mini.opacity = willShow ? 1 : 0;
+    obroundGroup.mini.selectable = willShow;
+    obroundGroup.dirty = true;
+    obroundGroup.setCoords();
+    canvas.requestRenderAll();
+  };
+
+  document.getElementById('toggleObroundPlus').onchange = (e) => {
+    if (!obroundGroup || !obroundGroup.plus) return;
+    const willShow = e.target.checked;
+    obroundGroup.plus.opacity = willShow ? 1 : 0;
+    obroundGroup.plus.selectable = willShow;
+    obroundGroup.dirty = true;
+    obroundGroup.setCoords();
+    canvas.requestRenderAll();
+  };
+
+  document.getElementById('toggleDome').onchange = (e) => {
+    if (!domeGroup || !domeGroup.circle) return;
+    const willShow = e.target.checked;
+    // toggle opacity on whole group so children stay in place and bbox unaffected
+    domeGroup.opacity = willShow ? 1 : 0;
+    domeGroup.selectable = willShow;
+    domeGroup.dirty = true;
+    domeGroup.setCoords();
+    canvas.requestRenderAll();
+  };
+
+  document.getElementById('toggleDomePlus').onchange = (e) => {
+    if (!domeGroup || !domeGroup.plus) return;
+    const willShow = e.target.checked;
+    domeGroup.plus.opacity = willShow ? 1 : 0;
+    domeGroup.plus.selectable = willShow;
+    domeGroup.dirty = true;
+    domeGroup.setCoords();
+    canvas.requestRenderAll();
+  };
+
+  // Initialize
+  initShapes();
+
+  // Optional: keyboard shortcuts (R = rotate 15deg CW, Shift+R = CCW) — corporate UX nicety
+  document.addEventListener('keydown', (ev) => {
+    if (!canvas.getActiveObject()) return;
+    const active = canvas.getActiveObject();
+    if (ev.key.toLowerCase() === 'r') {
+      const delta = ev.shiftKey ? -15 : 15;
+      active.rotate((active.angle || 0) + delta);
+      active.setCoords();
+      canvas.requestRenderAll();
+    }
+  });
+
+</script>
+</body>
+</html>
